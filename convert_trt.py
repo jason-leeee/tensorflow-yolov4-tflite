@@ -17,25 +17,30 @@ flags.DEFINE_string('weights', './checkpoints/yolov4-416', 'path to weights file
 flags.DEFINE_string('output', './checkpoints/yolov4-trt-fp16-416', 'path to output')
 flags.DEFINE_integer('input_size', 416, 'path to output')
 flags.DEFINE_string('quantize_mode', 'float16', 'quantize mode (int8, float16)')
-flags.DEFINE_string('dataset', "/media/user/Source/Data/coco_dataset/coco/5k.txt", 'path to dataset')
+flags.DEFINE_string('dataset', '', 'path to dataset')   # "./scripts/coco/5k.txt"
+flags.DEFINE_bool('build_engine', False, 'build engine while converting, with or without dataset')
 flags.DEFINE_integer('loop', 8, 'loop')
 
 def representative_data_gen():
-  fimage = open(FLAGS.dataset).read().split()
   batched_input = np.zeros((FLAGS.loop, FLAGS.input_size, FLAGS.input_size, 3), dtype=np.float32)
-  for input_value in range(FLAGS.loop):
-    if os.path.exists(fimage[input_value]):
-      original_image=cv2.imread(fimage[input_value])
-      original_image = cv2.cvtColor(original_image, cv2.COLOR_BGR2RGB)
-      image_data = utils.image_preporcess(np.copy(original_image), [FLAGS.input_size, FLAGS.input_size])
-      img_in = image_data[np.newaxis, ...].astype(np.float32)
-      batched_input[input_value, :] = img_in
-      # batched_input = tf.constant(img_in)
-      print(input_value)
-      # yield (batched_input, )
-      # yield tf.random.normal((1, 416, 416, 3)),
-    else:
-      continue
+
+  if FLAGS.dataset:
+    # fill batched_input with real data, otherwise just mock up with a 0-valued array
+    fimage = open(FLAGS.dataset).read().split()
+    for input_value in range(FLAGS.loop):
+      if os.path.exists(fimage[input_value]):
+        original_image=cv2.imread(fimage[input_value])
+        original_image = cv2.cvtColor(original_image, cv2.COLOR_BGR2RGB)
+        image_data = utils.image_preporcess(np.copy(original_image), [FLAGS.input_size, FLAGS.input_size])
+        img_in = image_data[np.newaxis, ...].astype(np.float32)
+        batched_input[input_value, :] = img_in
+        # batched_input = tf.constant(img_in)
+        print(input_value)
+        # yield (batched_input, )
+        # yield tf.random.normal((1, 416, 416, 3)),
+      else:
+        continue
+  
   batched_input = tf.constant(batched_input)
   yield (batched_input,)
 
@@ -68,7 +73,9 @@ def save_trt():
       input_saved_model_dir=FLAGS.weights, conversion_params=conversion_params)
     converter.convert()
 
-  # converter.build(input_fn=representative_data_gen)
+  if FLAGS.build_engine:
+    converter.build(input_fn=representative_data_gen)
+  
   converter.save(output_saved_model_dir=FLAGS.output)
   print('Done Converting to TF-TRT')
 
